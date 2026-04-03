@@ -28,7 +28,8 @@ import {
     CheckCircle
 } from 'lucide-react';
 
-const UXSimulation = ({ currentTask, tasks, currentTaskIndex, handleNext }) => {
+const UXSimulation = ({ currentTask, tasks, currentTaskIndex, handleNext, isSubmitting }) => {
+    const [rationale, setRationale] = useState('');
     const [fillColor, setFillColor] = useState('#0D93A5');
     const [radius, setRadius] = useState(12);
     const [shadow, setShadow] = useState(true);
@@ -99,11 +100,16 @@ const UXSimulation = ({ currentTask, tasks, currentTaskIndex, handleNext }) => {
                         <Share2 className="w-4 h-4" />
                     </button>
                     <button
-                        onClick={handleNext}
-                        className="flex items-center gap-2 px-5 py-2 bg-[#0D93A5] hover:bg-[#0CA3B5] text-white rounded-lg font-bold text-xs shadow-lg shadow-[#0D93A5]/20 transition-all"
+                        onClick={() => handleNext(`Design Rationale: ${rationale}\nFill Color: ${fillColor}\nCorner Radius: ${radius}px\nShadow: ${shadow}`)}
+                        disabled={isSubmitting}
+                        className="flex items-center gap-2 px-5 py-2 bg-[#0D93A5] hover:bg-[#0CA3B5] text-white rounded-lg font-bold text-xs shadow-lg shadow-[#0D93A5]/20 transition-all disabled:opacity-50"
                     >
-                        <CheckCircle className="w-4 h-4" />
-                        <span>Finish Task</span>
+                        {isSubmitting ? (
+                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        ) : (
+                            <CheckCircle className="w-4 h-4" />
+                        )}
+                        <span>{isSubmitting ? 'Submitting...' : 'Finish Task'}</span>
                     </button>
                 </div>
             </header>
@@ -242,10 +248,11 @@ const UXSimulation = ({ currentTask, tasks, currentTaskIndex, handleNext }) => {
                                 <span className="text-[10px] text-white/30 font-mono italic">Task {currentTaskIndex + 1} of {tasks.length} : UX Validation</span>
                             </div>
                             <div className="w-full bg-black/40 rounded-2xl p-6 border border-white/5 relative min-h-[140px] focus-within:border-[#0D93A5]/50 transition-colors">
-                                <span className="text-[11px] text-white/30 italic font-medium">Explain your design decisions... (e.g. &apos;I increased the corner radius to create a more friendly, rounded aesthetic that matches our brand guidelines...&apos;)</span>
                                 <textarea
                                     className="absolute inset-0 bg-transparent p-6 text-[11px] text-white focus:outline-none resize-none custom-scrollbar"
-                                    placeholder=""
+                                    placeholder="Explain your design decisions... (e.g. 'I increased the corner radius to create a more friendly, rounded aesthetic that matches our brand guidelines...')"
+                                    value={rationale}
+                                    onChange={(e) => setRationale(e.target.value)}
                                 />
                             </div>
                         </div>

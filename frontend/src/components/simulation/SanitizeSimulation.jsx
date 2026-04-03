@@ -12,17 +12,21 @@ import {
     AlertTriangle,
     CheckCircle,
     XCircle,
-    XCircle,
     RotateCcw
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import TaskFeedback from './TaskFeedback';
+import { simulationService } from '../../services/api';
+import { Loader2 } from 'lucide-react';
 
 const SanitizeSimulation = () => {
     const navigate = useNavigate();
     const { jobId, level } = useParams();
     const [showFeedback, setShowFeedback] = useState(false);
-    const [code, setCode] = useState(`from flask import request, jsonify
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [aiFeedback, setAiFeedback] = useState(null);
+    const [files, setFiles] = useState({
+        'auth_handler.py': `from flask import request, jsonify
 import sqlite3
 
 @app.route('/api/login', methods=['POST'])
@@ -38,12 +42,87 @@ def login_handler():
 
     if user:
         return jsonify({"status": "success"})
-    return jsonify({"status": "fail"}), 401`);
+    return jsonify({"status": "fail"}), 401`,
+        'models.py': `from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+class User(db.Model):
+    __tablename__ = 'users'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(128), nullable=False) # Stored as hash
+    is_admin = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f'<User {self.email}>'`
+    });
 
     const [email, setEmail] = useState("admin'--");
     const [password, setPassword] = useState("..........");
     const [activeTab, setActiveTab] = useState('auth_handler.py');
     const [isRunning, setIsRunning] = useState(false);
+    const [testResult, setTestResult] = useState(null);
+    const [showLogs, setShowLogs] = useState(false);
+
+    const analyzeCodeSafety = (codeContent) => {
+        // Heuristic checks
+        // Check for unsafe string formatting (f-string or .format or + concatenation in query)
+        const hasUnsafeStringFormatting = /f"SELECT.*\{.*\}/i.test(codeContent) || /"SELECT.*".*format\(/.test(codeContent) || /"SELECT.*"\s*\+/.test(codeContent) || /'SELECT.*'\s*\+/.test(codeContent);
+
+        // Check for parameterized queries (cursor.execute with 2 args: query and params tuple/list)
+        // Regex looks for cursor.execute(query_var, (...)) or cursor.execute("...", (...))
+        const hasParameterizedQuery = /cursor\.execute\s*\(\s*[a-zA-Z_]\w*\s*,\s*[\(\[\{]/.test(codeContent) || /cursor\.execute\s*\(\s*["'].*["']\s*,\s*[\(\[\{]/.test(codeContent) || /\?.+cursor\.execute/.test(codeContent) || /%s.+cursor\.execute/.test(codeContent);
+
+        if (hasParameterizedQuery) return 'SAFE';
+        if (hasUnsafeStringFormatting) return 'UNSAFE';
+        return 'UNKNOWN'; // Default to unsafe behavior if ambiguous
+    };
+
+    const handleTestInput = () => {
+        setIsRunning(true);
+        setTestResult(null);
+
+        // Analyze current code
+        const currentCode = files['auth_handler.py'];
+        const safetyStatus = analyzeCodeSafety(currentCode);
+        const isInputMalicious = email.includes("'") || email.includes("--") || password.includes("'");
+
+        setTimeout(() => {
+            setIsRunning(false);
+            if (safetyStatus === 'SAFE') {
+                // Safe code handles all inputs safely
+                setTestResult('safe');
+            } else {
+                // Unsafe code fails on malicious input
+                if (isInputMalicious) {
+                    setTestResult('vulnerable');
+                } else {
+                    setTestResult('safe');
+                }
+            }
+        }, 1200);
+    };
+
+    const handleSubmit = async () => {
+        try {
+            setIsSubmitting(true);
+            const result = await simulationService.submitTask('t3', files['auth_handler.py']);
+            setAiFeedback(result);
+            setShowFeedback(true);
+        } catch (error) {
+            console.error("Error submitting task:", error);
+            setAiFeedback({
+                score: 0,
+                is_correct: false,
+                feedback: `Submission Failed: ${error.response?.data?.detail || error.message || "Unknown error"}. Please check your connection or login again.`
+            });
+            setShowFeedback(true);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[#0F172A] text-slate-300 font-sans flex flex-col">
@@ -59,6 +138,11 @@ def login_handler():
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
+                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 rounded-full border border-slate-700/50">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            {level === 'Professional' ? 'Level 3' : level === 'Intermediate' ? 'Level 2' : 'Level 1'}
+                        </span>
+                    </div>
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Progress</span>
                         <span className="text-xs font-bold text-white">33% Complete</span>
@@ -115,11 +199,12 @@ def login_handler():
                                     />
                                 </div>
                                 <button
-                                    onClick={() => setShowFeedback(true)}
-                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                    onClick={handleTestInput}
+                                    disabled={isRunning}
+                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-lg shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
                                 >
-                                    <span>Sign In</span>
-                                    <ChevronDown className="w-4 h-4 -rotate-90" />
+                                    {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Sign In</span>}
+                                    {isRunning ? null : <ChevronDown className="w-4 h-4 -rotate-90" />}
                                 </button>
                             </div>
                             <p className="text-center text-[10px] text-slate-600 font-medium">Environment: Sandboxed Trial v1.0.4</p>
@@ -127,19 +212,33 @@ def login_handler():
                     </div>
 
                     {/* Crash Details Panel */}
-                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex justify-between items-start gap-4">
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-red-400">
-                                <AlertTriangle className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase tracking-widest">Crash Details</span>
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col gap-4">
+                        <div className="flex justify-between items-start gap-4">
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-red-400">
+                                    <AlertTriangle className="w-4 h-4" />
+                                    <span className="text-xs font-black uppercase tracking-widest">Crash Details</span>
+                                </div>
+                                <p className="text-xs font-mono text-red-300/80 leading-relaxed">
+                                    CRITICAL: Internal Server Error 500 - Unhandled character exception at line 12. Input sanitization failed for character <span className="bg-red-500/20 px-1 rounded text-white">'</span>
+                                </p>
                             </div>
-                            <p className="text-xs font-mono text-red-300/80 leading-relaxed">
-                                CRITICAL: Internal Server Error 500 - Unhandled character exception at line 12. Input sanitization failed for character <span className="bg-red-500/20 px-1 rounded text-white">'</span>
-                            </p>
+                            <button
+                                onClick={() => setShowLogs(!showLogs)}
+                                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-red-500/20 transition-colors whitespace-nowrap"
+                            >
+                                {showLogs ? 'Hide Logs' : 'View Logs'}
+                            </button>
                         </div>
-                        <button className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-red-500/20 transition-colors whitespace-nowrap">
-                            View Logs
-                        </button>
+
+                        {showLogs && (
+                            <div className="bg-black/40 rounded-xl p-4 font-mono text-[10px] text-red-400/70 space-y-1 animate-in slide-in-from-top-2 duration-300">
+                                <div>[16:05:22] ERROR: sqlalchemy.exc.InternalError: (sqlite3.InternalError)</div>
+                                <div>[16:05:22] CRITICAL: Unexpected Character at index 14: "'"</div>
+                                <div>[16:05:22] TRACEBACK: /usr/local/lib/python3.9/sqlite3/dbapi2.py In execute</div>
+                                <div>[16:05:22] QUERY: SELECT * FROM users WHERE email='admin'--' AND pass='..........'</div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -185,8 +284,8 @@ def login_handler():
                             </div>
                             <div className="flex-grow relative">
                                 <textarea
-                                    value={code}
-                                    onChange={(e) => setCode(e.target.value)}
+                                    value={files[activeTab]}
+                                    onChange={(e) => setFiles({ ...files, [activeTab]: e.target.value })}
                                     className="w-full h-full bg-transparent text-slate-300 p-4 font-mono text-sm leading-6 resize-none focus:outline-none"
                                     spellCheck="false"
                                 />
@@ -198,18 +297,31 @@ def login_handler():
                         {/* Bottom Actions */}
                         <div className="p-4 bg-[#0F172A]/50 border-t border-slate-800 flex justify-between items-center">
                             <div className="flex items-center gap-4">
-                                <button className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">
-                                    <Play className="w-3 h-3" />
-                                    Test with Input
+                                <button
+                                    onClick={handleTestInput}
+                                    disabled={isRunning}
+                                    className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                                >
+                                    {isRunning ? (
+                                        <div className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+                                    ) : (
+                                        <Play className="w-3 h-3" />
+                                    )}
+                                    {isRunning ? 'Analyzing...' : 'Test with Input'}
                                 </button>
-                                <span className="text-[10px] font-medium text-slate-600">Shortcut: Ctrl + Enter</span>
+                                {testResult && (
+                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${testResult === 'vulnerable' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                        {testResult === 'vulnerable' ? 'Vulnerability Detected' : 'Input Appears Safe'}
+                                    </span>
+                                )}
                             </div>
                             <button
-                                onClick={() => setShowFeedback(true)}
-                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
+                                onClick={handleSubmit}
+                                disabled={isSubmitting}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
                             >
-                                <span>Submit Fix</span>
-                                <ChevronDown className="w-3 h-3 -rotate-90" />
+                                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>Submit Fix</span>}
+                                {isSubmitting ? null : <ChevronDown className="w-3 h-3 -rotate-90" />}
                             </button>
                         </div>
                     </div>
@@ -234,17 +346,20 @@ def login_handler():
                     </div>
                 </div>
             </footer>
-        </footer>
             {
-        showFeedback && (
-            <TaskFeedback
-                onNext={() => navigate(`/jobs/${jobId}/${level}/overview`)}
-                onRetry={() => setShowFeedback(false)}
-                feedback="Great work! You correctly identified the SQL injection vulnerability and implemented parameterized queries to sanitize the inputs."
-            />
-        )
-    }
-        </div >
+                showFeedback && (
+                    <TaskFeedback
+                        onNext={() => {
+                            // Level 1 (Beginner) ends here for job_dev
+                            navigate(`/simulation/${jobId}/${level}/feedback`);
+                        }}
+                        onRetry={() => setShowFeedback(false)}
+                        score={aiFeedback?.score}
+                        feedback={aiFeedback?.feedback}
+                    />
+                )
+            }
+        </div>
     );
 };
 

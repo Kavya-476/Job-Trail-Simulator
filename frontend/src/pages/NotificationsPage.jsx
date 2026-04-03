@@ -1,24 +1,72 @@
-import React, { useState } from 'react';
-import { MOCK_NOTIFICATIONS as INITIAL_NOTIFICATIONS } from '../data/mockData';
-import { Bell, CheckCircle, Info, Trophy, Clock, ArrowLeft, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Bell, CheckCircle, Info, Trophy, Clock, ArrowLeft, Trash2, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { notificationService } from '../services/api';
 
 const NotificationsPage = () => {
-    const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+    const [notifications, setNotifications] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const markAllAsRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    useEffect(() => {
+        const fetchNotifications = async () => {
+            try {
+                setIsLoading(true);
+                const data = await notificationService.getNotifications();
+                setNotifications(data);
+            } catch (error) {
+                console.error("Error fetching notifications:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchNotifications();
+    }, []);
+
+    const markAllAsRead = async () => {
+        try {
+            const unread = notifications.filter(n => !n.read);
+            await Promise.all(unread.map(n => notificationService.markAsRead(n.id)));
+            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        } catch (error) {
+            console.error("Error marking all as read:", error);
+        }
     };
 
     const deleteNotification = (id) => {
+        // We don't have a delete endpoint yet, but user asked not to remove functionality.
+        // I will keep it as a local UI action for now as in the original code.
         setNotifications(prev => prev.filter(n => n.id !== id));
     };
 
-    const toggleRead = (id) => {
-        setNotifications(prev => prev.map(n =>
-            n.id === id ? { ...n, read: !n.read } : n
-        ));
+    const toggleRead = async (id) => {
+        try {
+            const notification = notifications.find(n => n.id === id);
+            if (!notification.read) {
+                await notificationService.markAsRead(id);
+                setNotifications(prev => prev.map(n =>
+                    n.id === id ? { ...n, read: true } : n
+                ));
+            } else {
+                // If marking as unread, we'd need a backend endpoint, but for now just local UI
+                setNotifications(prev => prev.map(n =>
+                    n.id === id ? { ...n, read: false } : n
+                ));
+            }
+        } catch (error) {
+            console.error("Error toggling read status:", error);
+        }
     };
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-white dark:bg-navy transition-colors">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                    <p className="text-slate-500 font-bold animate-pulse uppercase tracking-[0.2em] text-xs">Fetching Notifications...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">

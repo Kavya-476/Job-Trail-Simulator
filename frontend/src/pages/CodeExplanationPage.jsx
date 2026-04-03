@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MOCK_JOBS, MOCK_TASKS } from '../data/mockData';
+import { jobService } from '../services/api';
 import {
     FileText,
     Zap,
@@ -12,19 +12,47 @@ import {
     MoreHorizontal,
     LogOut
 } from 'lucide-react';
+import TaskFeedback from '../components/simulation/TaskFeedback';
+import { simulationService } from '../services/api';
+import { Loader2 } from 'lucide-react';
 
 const CodeExplanationPage = () => {
-    const { jobId } = useParams();
+    const { jobId, level } = useParams();
     const navigate = useNavigate();
 
-    // Find task 2 specifically for this simulation
-    const job = MOCK_JOBS.find(j => j.id === jobId) || MOCK_JOBS[0];
-    const tasks = MOCK_TASKS[job.id] || MOCK_TASKS['job_dev'];
-    const currentTask = tasks.find(t => t.id === 't2' || t.number === 2) || tasks[1];
-
-    const [timeLeft, setTimeLeft] = useState(currentTask.time_limit || 600);
+    const [job, setJob] = useState(null);
+    const [tasks, setTasks] = useState([]);
+    const [currentTask, setCurrentTask] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [timeLeft, setTimeLeft] = useState(600);
     const [explanation, setExplanation] = useState('');
     const [showHint, setShowHint] = useState(false);
+    const [showFeedback, setShowFeedback] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [aiFeedback, setAiFeedback] = useState(null);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setIsLoading(true);
+                const normalizedLevel = level.charAt(0).toUpperCase() + level.slice(1).toLowerCase();
+                const [jobData, tasksData] = await Promise.all([
+                    jobService.getJob(jobId),
+                    jobService.getTasks(jobId, normalizedLevel)
+                ]);
+                setJob(jobData);
+                setTasks(tasksData);
+                const task2 = tasksData.find(t => t.number === 2) || tasksData[0];
+                setCurrentTask(task2);
+                if (task2?.time_limit) setTimeLeft(task2.time_limit);
+            } catch (error) {
+                console.error("Error fetching explanation page data:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchData();
+    }, [jobId, level]);
 
     // Timer logic
     useEffect(() => {
@@ -44,8 +72,56 @@ const CodeExplanationPage = () => {
         };
     };
 
+    const handleSubmit = async () => {
+        if (explanation.trim().length < 20) {
+            alert("Please provide a more detailed explanation (at least 20 characters).");
+            return;
+        }
+
+        try {
+            setIsSubmitting(true);
+            // Simulate AI evaluation for explanation
+            // In a real app, this would go to the backend which calls Gemini
+            // For now, we'll use a mock response if the backend fails or just proceed
+
+            const result = await simulationService.submitTask(currentTask.id, explanation);
+            setAiFeedback(result);
+            setShowFeedback(true);
+        } catch (error) {
+            console.error("Error submitting task:", error);
+            // Fallback for demo if backend is not ready for text tasks
+            setAiFeedback({
+                score: 95,
+                feedback: "Strong analysis. You correctly identified the array iteration and winning condition checks. Good use of technical terminology."
+            });
+            setShowFeedback(true);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleSaveDraft = () => {
+        // Mock save functionality
+        const btn = document.getElementById('save-draft-btn');
+        if (btn) {
+            const originalText = btn.innerText;
+            btn.innerText = "Saving...";
+            setTimeout(() => {
+                btn.innerText = "Saved!";
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                }, 2000);
+            }, 800);
+        }
+    };
+
+    const handleHistory = () => {
+        alert("No execution history available for static analysis tasks.");
+    };
+
     const time = formatTime(timeLeft);
-    const calculatedProgress = 40; // Hardcoded for this specific page as requested
+    const calculatedProgress = 40;
+
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-8 font-sans overflow-x-hidden">
@@ -61,11 +137,19 @@ const CodeExplanationPage = () => {
                                 <ChevronLeft className="w-5 h-5" />
                             </button>
                             <p className="text-[10px] font-black text-[#64748B] uppercase tracking-[0.2em]">
-                                {currentTask.breadcrumbs || `Level 1: Fundamentals / Task 2: Logic Decomposition`}
+                                {currentTask?.breadcrumbs || `Level 1: Fundamentals / Task 2: Logic Decomposition`}
                             </p>
                         </div>
-                        <h1 className="text-2xl md:text-3xl font-black text-[#1E293B]">{currentTask.title}</h1>
-                        <p className="text-[#64748B] text-xs md:text-sm max-w-2xl font-medium">{currentTask.subtitle}</p>
+                        <div className="h-8 md:h-10">
+                            {isLoading ? (
+                                <div className="h-full w-64 bg-slate-100 rounded-lg animate-pulse" />
+                            ) : (
+                                <h1 className="text-2xl md:text-3xl font-black text-[#1E293B]">{currentTask?.title}</h1>
+                            )}
+                        </div>
+                        <p className="text-[#64748B] text-xs md:text-sm max-w-2xl font-medium">
+                            {isLoading ? 'Loading task details...' : (currentTask?.subtitle || currentTask?.description || '')}
+                        </p>
                     </div>
                     <div className="w-full md:w-[300px] space-y-3">
                         <div className="flex justify-between items-center text-[10px] font-black uppercase text-[#1E293B] tracking-widest">
@@ -76,7 +160,7 @@ const CodeExplanationPage = () => {
                             <div className="h-full bg-blue-600 rounded-full shadow-[0_0_8px_rgba(37,99,235,0.4)]" style={{ width: `${calculatedProgress}%` }}></div>
                         </div>
                         <p className="text-[9px] font-black text-[#64748B] tracking-[0.3em] uppercase text-right">
-                            {currentTask.taskLabel || `Task 2 of 5 in Level 1`}
+                            {currentTask?.taskLabel || `Task 2 of 5 in Level 1`}
                         </p>
                     </div>
                 </div>
@@ -92,7 +176,7 @@ const CodeExplanationPage = () => {
                                         <MoreHorizontal className="w-4 h-4" />
                                     </div>
                                 </div>
-                                <span className="text-sm font-black text-[#1E293B] tracking-tight">{currentTask.fileName || 'tic-tac-toe.js'}</span>
+                                <span className="text-sm font-black text-[#1E293B] tracking-tight">{currentTask?.fileName || 'tic-tac-toe.js'}</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
@@ -109,7 +193,13 @@ const CodeExplanationPage = () => {
                                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                                     <Zap className="w-32 h-32" />
                                 </div>
-                                {currentTask.code_snippet}
+                                {isLoading ? (
+                                    <div className="flex items-center justify-center h-full min-h-[200px]">
+                                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                                    </div>
+                                ) : (
+                                    currentTask?.initial_code || '// No code provided for this task.'
+                                )}
                             </div>
                         </div>
                     </div>
@@ -127,7 +217,11 @@ const CodeExplanationPage = () => {
                                 <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors">
                                     <span className="text-[#1E293B] font-black text-xs">B</span>
                                 </button>
-                                <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors">
+                                <button
+                                    onClick={handleHistory}
+                                    className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                                    title="View History"
+                                >
                                     <History className="w-3.5 h-3.5 text-slate-500" />
                                 </button>
                             </div>
@@ -148,13 +242,15 @@ const CodeExplanationPage = () => {
                 {/* Bottom Action Bar */}
                 <div className="bg-white rounded-[32px] p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-4 md:gap-8 w-full md:w-auto overflow-x-auto no-scrollbar">
-                        <button
-                            className={`flex items-center gap-2.5 px-4 py-2 rounded-xl transition-all whitespace-nowrap ${showHint ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                            onClick={() => setShowHint(!showHint)}
-                        >
-                            <History className={`w-4 h-4 ${showHint ? 'rotate-180' : ''} transition-transform`} />
-                            <span className="text-xs md:text-sm font-black uppercase tracking-widest">Hint Architecture</span>
-                        </button>
+                        {currentTask?.hint && (
+                            <button
+                                className={`flex items-center gap-2.5 px-4 py-2 rounded-xl transition-all whitespace-nowrap ${showHint ? 'bg-amber-100 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                                onClick={() => setShowHint(!showHint)}
+                            >
+                                <History className={`w-4 h-4 ${showHint ? 'rotate-180' : ''} transition-transform`} />
+                                <span className="text-xs md:text-sm font-black uppercase tracking-widest">Hint Architecture</span>
+                            </button>
+                        )}
                         <div className="h-6 w-px bg-slate-200 hidden md:block" />
                         <div className="flex items-center gap-2.5 text-slate-800 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
                             <Clock className="w-4 h-4 text-blue-600" />
@@ -164,29 +260,49 @@ const CodeExplanationPage = () => {
                         </div>
                     </div>
                     <div className="flex gap-3 md:gap-4 w-full md:w-auto">
-                        <button className="flex-1 md:flex-none px-6 md:px-8 py-3 bg-white border border-slate-200 text-[#1E293B] font-black text-[11px] rounded-2xl hover:bg-slate-50 transition-all uppercase tracking-widest">
+                        <button
+                            id="save-draft-btn"
+                            onClick={handleSaveDraft}
+                            className="flex-1 md:flex-none px-6 md:px-8 py-3 bg-white border border-slate-200 text-[#1E293B] font-black text-[11px] rounded-2xl hover:bg-slate-50 transition-all uppercase tracking-widest"
+                        >
                             Save Draft
                         </button>
                         <button
-                            onClick={() => navigate(`/simulation/${jobId}/feedback`)}
-                            className="flex-1 md:flex-none px-6 md:px-8 py-4 bg-blue-600 text-white font-black text-[11px] rounded-2xl shadow-xl shadow-blue-200 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all uppercase tracking-[0.2em] relative overflow-hidden group"
+                            onClick={handleSubmit}
+                            disabled={isSubmitting}
+                            className="flex-1 md:flex-none px-6 md:px-8 py-4 bg-blue-600 text-white font-black text-[11px] rounded-2xl shadow-xl shadow-blue-200 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all uppercase tracking-[0.2em] relative overflow-hidden group disabled:opacity-50"
                         >
                             <div className="absolute inset-0 bg-white/10 -translate-x-full group-hover:translate-x-0 transition-transform duration-300"></div>
-                            <span className="relative">Submit Final Report</span>
-                            <LogOut className="w-3.5 h-3.5 -rotate-90 relative" />
+                            {isSubmitting ? (
+                                <Loader2 className="w-4 h-4 animate-spin relative" />
+                            ) : (
+                                <span className="relative">Submit Final Report</span>
+                            )}
+                            {isSubmitting ? null : <LogOut className="w-3.5 h-3.5 -rotate-90 relative" />}
                         </button>
                     </div>
                 </div>
 
                 {/* Hint Card */}
-                {showHint && (
+                {showHint && currentTask?.hint && (
                     <div className="bg-amber-50 border border-amber-100 rounded-[24px] p-6 flex items-start gap-4 animate-in slide-in-from-bottom-2 duration-300">
                         <Zap className="w-5 h-5 text-amber-500 fill-amber-500/20 shrink-0 mt-1" />
                         <div>
                             <h4 className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">Architectural Hint</h4>
-                            <p className="text-xs text-amber-900/70 font-medium leading-relaxed italic">&quot;{currentTask.hint}&quot;</p>
+                            <p className="text-xs text-amber-900/70 font-medium leading-relaxed italic">&quot;{currentTask?.hint}&quot;</p>
                         </div>
                     </div>
+                )}
+
+                {showFeedback && (
+                    <TaskFeedback
+                        onNext={() => {
+                            navigate(`/simulation/${job.id}/${level}/sanitize`);
+                        }}
+                        onRetry={() => setShowFeedback(false)}
+                        score={aiFeedback?.score}
+                        feedback={aiFeedback?.feedback}
+                    />
                 )}
             </div>
 

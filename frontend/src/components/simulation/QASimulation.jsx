@@ -22,7 +22,8 @@ import {
     Zap
 } from 'lucide-react';
 
-const QASimulation = ({ currentTask, handleNext }) => {
+const QASimulation = ({ currentTask, handleNext, isSubmitting }) => {
+    const [bugSignature, setBugSignature] = useState('');
     const [timeLeft, setTimeLeft] = useState(currentTask.time_limit || 2400);
     const [qualityScore] = useState(82);
 
@@ -84,10 +85,16 @@ const QASimulation = ({ currentTask, handleNext }) => {
                         <span className="text-[10px] font-black uppercase tracking-widest">Environment stable</span>
                     </div>
                     <button
-                        onClick={handleNext}
-                        className="bg-sim-teal hover:bg-teal-600 text-white px-6 py-2.5 rounded-xl font-black text-[11px] shadow-lg shadow-teal-500/20 transition-all active:scale-95 flex items-center gap-2 uppercase tracking-widest"
+                        onClick={() => handleNext(`Bug Report:\n${bugSignature}`)}
+                        disabled={isSubmitting}
+                        className="bg-sim-teal hover:bg-teal-600 text-white px-6 py-2.5 rounded-xl font-black text-[11px] shadow-lg shadow-teal-500/20 transition-all active:scale-95 flex items-center gap-2 uppercase tracking-widest disabled:opacity-50"
                     >
-                        Push to Prod <Send className="w-3.5 h-3.5" />
+                        {isSubmitting ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        ) : (
+                            <Send className="w-3.5 h-3.5" />
+                        )}
+                        <span>{isSubmitting ? 'Pushing...' : 'Push to Prod'}</span>
                     </button>
                 </div>
             </header>
@@ -251,7 +258,13 @@ const QASimulation = ({ currentTask, handleNext }) => {
                                 <span className="text-[9px] font-mono text-slate-700">UID: BUG-TRX-AUTO</span>
                             </div>
                             <div className="bg-black/40 border border-white/5 rounded-2xl p-4 transition-all focus-within:ring-2 ring-sim-teal/20">
-                                <textarea className="w-full bg-transparent text-xs text-slate-200 focus:outline-none resize-none placeholder:text-slate-800" rows="3" placeholder="Define the failure point in the architecture..." />
+                                <textarea
+                                    className="w-full bg-transparent text-xs text-slate-200 focus:outline-none resize-none placeholder:text-slate-800"
+                                    rows="3"
+                                    placeholder="Define the failure point in the architecture..."
+                                    value={bugSignature}
+                                    onChange={(e) => setBugSignature(e.target.value)}
+                                />
                             </div>
                         </div>
 
@@ -293,10 +306,18 @@ const QASimulation = ({ currentTask, handleNext }) => {
                             </div>
                         </div>
 
-                        <button className="w-full bg-sim-teal hover:bg-teal-600 text-white py-5 rounded-2xl font-black text-xs shadow-xl shadow-teal-500/20 transition-all flex items-center justify-center gap-4 active:scale-[0.98] uppercase tracking-[0.2em] relative overflow-hidden group">
+                        <button
+                            onClick={() => handleNext(`Bug Report:\n${bugSignature}`)}
+                            disabled={isSubmitting}
+                            className="w-full bg-sim-teal hover:bg-teal-600 text-white py-5 rounded-2xl font-black text-xs shadow-xl shadow-teal-500/20 transition-all flex items-center justify-center gap-4 active:scale-[0.98] uppercase tracking-[0.2em] relative overflow-hidden group disabled:opacity-50"
+                        >
                             <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                            <span className="relative">Submit Security Report</span>
-                            <Zap className="w-4 h-4 fill-current relative" />
+                            <span className="relative">{isSubmitting ? 'Submitting Report...' : 'Submit Security Report'}</span>
+                            {isSubmitting ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin relative"></div>
+                            ) : (
+                                <Zap className="w-4 h-4 fill-current relative" />
+                            )}
                         </button>
 
                         <div className="space-y-6 pt-10 border-t border-white/5">

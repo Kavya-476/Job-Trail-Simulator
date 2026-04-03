@@ -21,7 +21,8 @@ import {
     Play
 } from 'lucide-react';
 
-const DataSimulation = ({ currentTask, handleNext }) => {
+const DataSimulation = ({ currentTask, handleNext, isSubmitting }) => {
+    const [findings, setFindings] = useState('');
     const [timeLeft, setTimeLeft] = useState(currentTask.time_limit || 2700);
     const [activeView, setActiveView] = useState('table');
     const [sqlQuery, setSqlQuery] = useState('-- Querying Order Trends\nSELECT region, SUM(revenue) as total_rev\nFROM orders\nWHERE date >= "2023-10-01"\nGROUP BY region\nORDER BY total_rev DESC;');
@@ -73,11 +74,16 @@ const DataSimulation = ({ currentTask, handleNext }) => {
                         <span>Export</span>
                     </button>
                     <button
-                        onClick={handleNext}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold text-xs shadow-xl shadow-blue-500/20 transition-all active:scale-95"
+                        onClick={() => handleNext(`SQL Query:\n${sqlQuery}\n\nSynthesis of Findings:\n${findings}`)}
+                        disabled={isSubmitting}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold text-xs shadow-xl shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50"
                     >
-                        <Send className="w-4 h-4" />
-                        <span>Submit Project</span>
+                        {isSubmitting ? (
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        ) : (
+                            <Send className="w-4 h-4" />
+                        )}
+                        <span>{isSubmitting ? 'Submitting...' : 'Submit Project'}</span>
                     </button>
                 </div>
             </header>
@@ -108,12 +114,12 @@ const DataSimulation = ({ currentTask, handleNext }) => {
                                 <TrendingUp className="w-4 h-4" /> Findings Synthesis
                             </h3>
                             <div className="p-5 bg-slate-50 dark:bg-black/20 rounded-2xl border border-slate-100 dark:border-white/5 relative min-h-[160px] group transition-all focus-within:ring-2 ring-blue-500/20">
-                                <span className="text-[11px] text-slate-400 dark:text-white/20 italic block mb-3 leading-relaxed">
-                                    Synthesize your findings here based on the data trends...
-                                </span>
                                 <textarea
-                                    className="w-full bg-transparent text-[11px] text-slate-700 dark:text-white/80 focus:outline-none resize-none"
+                                    className="w-full bg-transparent text-[11px] text-slate-700 dark:text-white/80 focus:outline-none resize-none custom-scrollbar"
                                     rows="6"
+                                    placeholder="Synthesize your findings here based on the data trends..."
+                                    value={findings}
+                                    onChange={(e) => setFindings(e.target.value)}
                                 />
                             </div>
                         </div>

@@ -1,23 +1,47 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Terminal, Eye, EyeOff, Calendar, User, Mail, Briefcase } from 'lucide-react';
+import { Terminal, Eye, EyeOff, Calendar, User, Mail, Briefcase, AlertCircle } from 'lucide-react';
+import { authService } from '../services/api';
 import illustration from '../assets/auth-illustration.png';
+import TermsModal from '../components/TermsModal';
+import PrivacyModal from '../components/PrivacyModal';
 
 const SignupPage = () => {
     const navigate = useNavigate();
-    const [isLoading, setIsLoading] = React.useState(false);
-    const [showPassword, setShowPassword] = React.useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [email, setEmail] = useState('');
+    const [name, setName] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [education, setEducation] = useState('');
+    const [showTerms, setShowTerms] = useState(false);
+    const [showPrivacy, setShowPrivacy] = useState(false);
+    const [error, setError] = useState('');
 
-    const handleSignup = (e) => {
+    const handleSignup = async (e) => {
         e.preventDefault();
+        setError('');
+
+        if (password !== confirmPassword) {
+            setError('Passwords do not match');
+            return;
+        }
+
         setIsLoading(true);
 
-        // Mock validation/loading
-        setTimeout(() => {
+        try {
+            await authService.signup(name, email, password, education);
+            // Auto-login after signup
+            await authService.login(email, password);
+            navigate('/dashboard', { state: { newUser: true } });
+        } catch (err) {
+            console.error('Signup error:', err);
+            setError(err.response?.data?.detail || 'Failed to create account. Please try again.');
+        } finally {
             setIsLoading(false);
-            navigate('/dashboard');
-        }, 2000);
+        }
     };
 
     return (
@@ -38,7 +62,7 @@ const SignupPage = () => {
                             <div className="bg-primary p-2.5 rounded-xl shadow-lg">
                                 <Terminal className="w-6 h-6 text-white" />
                             </div>
-                            <span className="text-2xl font-black text-white tracking-tight">TechPath</span>
+                            <span className="text-2xl font-black text-white tracking-tight">JOB TRAIL SIMULATOR</span>
                         </div>
 
                         <div className="mt-auto">
@@ -67,7 +91,7 @@ const SignupPage = () => {
                             <div className="bg-primary p-1.5 rounded-lg shadow-sm">
                                 <Terminal className="w-4 h-4 text-white" />
                             </div>
-                            <span className="text-lg font-bold text-navy dark:text-white">TechPath</span>
+                            <span className="text-lg font-bold text-navy dark:text-white">JTS</span>
                         </div>
                         <Link to="/login" className="text-xs font-black text-primary uppercase tracking-widest hover:underline">Sign In</Link>
                     </div>
@@ -76,6 +100,13 @@ const SignupPage = () => {
                         <h2 className="text-3xl sm:text-4xl font-black text-navy dark:text-white mb-3">Create account</h2>
                         <p className="text-slate-500 dark:text-slate-400 font-medium">Get started with your first career simulation.</p>
                     </div>
+
+                    {error && (
+                        <div className="mb-6 p-4 bg-red-50 border border-red-100 dark:bg-red-900/10 dark:border-red-900/20 rounded-2xl flex items-center gap-3 animate-in fade-in zoom-in duration-300">
+                            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                            <p className="text-sm font-bold text-red-600 dark:text-red-400">{error}</p>
+                        </div>
+                    )}
 
                     <form className="space-y-5 sm:space-y-6 flex-1" onSubmit={handleSignup}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
@@ -86,6 +117,8 @@ const SignupPage = () => {
                                     <input
                                         type="email"
                                         placeholder="student@university.edu"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
                                         className="w-full pl-4 pr-10 py-3.5 bg-slate-50 dark:bg-navy border-2 border-transparent focus:border-primary/30 dark:focus:border-primary/30 rounded-2xl outline-none transition-all placeholder:text-slate-400 font-bold text-navy dark:text-white"
                                         required
                                     />
@@ -100,6 +133,8 @@ const SignupPage = () => {
                                     <input
                                         type="text"
                                         placeholder="johndoe123"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
                                         className="w-full pl-4 pr-10 py-3.5 bg-slate-50 dark:bg-navy border-2 border-transparent focus:border-primary/30 dark:focus:border-primary/30 rounded-2xl outline-none transition-all placeholder:text-slate-400 font-bold text-navy dark:text-white"
                                         required
                                     />
@@ -129,7 +164,8 @@ const SignupPage = () => {
                                 <div className="relative">
                                     <select
                                         className="w-full px-4 py-3.5 bg-slate-50 dark:bg-navy border-2 border-transparent focus:border-primary/30 dark:focus:border-primary/30 rounded-2xl outline-none transition-all font-bold text-navy dark:text-white appearance-none"
-                                        defaultValue=""
+                                        value={education}
+                                        onChange={(e) => setEducation(e.target.value)}
                                         required
                                     >
                                         <option value="" disabled className="dark:bg-navy text-slate-400">Select status</option>
@@ -148,6 +184,8 @@ const SignupPage = () => {
                                     <input
                                         type={showPassword ? 'text' : 'password'}
                                         placeholder="Min. 8 chars"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
                                         className="w-full pl-4 pr-12 py-3.5 bg-slate-50 dark:bg-navy border-2 border-transparent focus:border-primary/30 dark:focus:border-primary/30 rounded-2xl outline-none transition-all placeholder:text-slate-400 font-bold text-navy dark:text-white"
                                         required
                                     />
@@ -168,6 +206,8 @@ const SignupPage = () => {
                                     <input
                                         type={showConfirmPassword ? 'text' : 'password'}
                                         placeholder="Re-enter password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
                                         className="w-full pl-4 pr-12 py-3.5 bg-slate-50 dark:bg-navy border-2 border-transparent focus:border-primary/30 dark:focus:border-primary/30 rounded-2xl outline-none transition-all placeholder:text-slate-400 font-bold text-navy dark:text-white"
                                         required
                                     />
@@ -185,7 +225,7 @@ const SignupPage = () => {
                         <div className="flex items-start space-x-3 mt-4 ml-1">
                             <input type="checkbox" id="terms" className="mt-1 w-5 h-5 border-slate-300 dark:border-slate-700 bg-transparent rounded text-primary focus:ring-primary transition-all cursor-pointer" required />
                             <label htmlFor="terms" className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-300 leading-snug">
-                                I agree to the <a href="#" className="text-primary font-bold hover:underline">Terms of Service</a> and <a href="#" className="text-primary font-bold hover:underline">Privacy Policy</a>.
+                                I agree to the <button type="button" onClick={() => setShowTerms(true)} className="text-primary font-bold hover:underline">Terms of Service</button> and <button type="button" onClick={() => setShowPrivacy(true)} className="text-primary font-bold hover:underline">Privacy Policy</button>.
                             </label>
                         </div>
 
@@ -218,9 +258,12 @@ const SignupPage = () => {
             <div className="mt-8 sm:mt-12 flex flex-wrap justify-center gap-x-8 gap-y-4 text-xs sm:text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-8">
                 <a href="#" className="hover:text-primary transition-colors">About</a>
                 <a href="#" className="hover:text-primary transition-colors">Support</a>
-                <a href="#" className="hover:text-primary transition-colors">Privacy</a>
+                <button onClick={() => setShowPrivacy(true)} className="hover:text-primary transition-colors uppercase tracking-widest font-bold">Privacy</button>
                 <a href="#" className="hover:text-primary transition-colors">Help</a>
             </div>
+
+            <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
+            <PrivacyModal isOpen={showPrivacy} onClose={() => setShowPrivacy(false)} />
         </div>
     );
 };

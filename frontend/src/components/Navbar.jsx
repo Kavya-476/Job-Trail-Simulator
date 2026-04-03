@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Terminal, Bell, LogOut, Sun, Moon, Menu, X } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { authService } from '../services/api';
 
 const Navbar = () => {
     const location = useLocation();
@@ -11,8 +12,38 @@ const Navbar = () => {
 
     const isActive = (path) => location.pathname.startsWith(path);
 
+    const [user, setUser] = React.useState(null);
+    const [isHeaderLoading, setIsHeaderLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        const fetchUser = async () => {
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            if (!token) {
+                setIsHeaderLoading(false);
+                return;
+            }
+            try {
+                const userData = await authService.getProfile();
+                setUser(userData);
+            } catch (error) {
+                console.error("Navbar auth check failed", error);
+                // If 401, clear token
+                if (error.response?.status === 401) {
+                    localStorage.removeItem('token');
+                    sessionStorage.removeItem('token');
+                    setUser(null);
+                }
+            } finally {
+                setIsHeaderLoading(false);
+            }
+        };
+        fetchUser();
+    }, [location.pathname]); // Re-check on route change
+
     const handleLogout = () => {
-        // Mock logout logic
+        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
+        setUser(null);
         navigate('/login');
     };
 
@@ -26,7 +57,7 @@ const Navbar = () => {
                             <div className="bg-primary p-1.5 rounded-lg shadow-sm group-hover:scale-110 transition-transform">
                                 <Terminal className="w-5 h-5 text-white" />
                             </div>
-                            <span className="text-lg font-bold text-navy dark:text-white tracking-tight">CareerSim</span>
+                            <span className="text-lg font-bold text-navy dark:text-white tracking-tight">JOB TRAIL SIMULATOR</span>
                         </Link>
                     </div>
 
@@ -58,11 +89,11 @@ const Navbar = () => {
 
                         <div className="hidden sm:flex items-center space-x-4 border-l border-slate-100 dark:border-slate-800 pl-4 md:pl-6">
                             <div className="text-right">
-                                <div className="text-sm font-bold text-navy dark:text-white">John Doe</div>
-                                <div className="text-[10px] text-primary font-black uppercase tracking-widest leading-none">Student</div>
+                                <div className="text-sm font-bold text-navy dark:text-white">{user?.name || 'User'}</div>
+                                <div className="text-[10px] text-primary font-black uppercase tracking-widest leading-none">{user?.role || 'Developer'}</div>
                             </div>
                             <img
-                                src="https://api.dicebear.com/7.x/avataaars/svg?seed=John"
+                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'User'}`}
                                 alt="User Profile"
                                 className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-800 shadow-sm"
                             />

@@ -1,10 +1,30 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
-import { Terminal, ArrowRight, CheckCircle, Code, BarChart, Shield, Cloud, Play, ThumbsUp, Share2 } from 'lucide-react';
-import { MOCK_JOBS } from '../data/mockData';
+import { Terminal, ArrowRight, CheckCircle, Code } from 'lucide-react';
+import { jobService, authService } from '../services/api';
+import { useState, useEffect } from 'react';
 import illustration from '../assets/auth-illustration.png'; // Reusing the auth image for now
 
 const LandingPage = () => {
+    const [jobs, setJobs] = useState([]);
+    const [totalUsers, setTotalUsers] = useState(0);
+    const isLoggedIn = !!localStorage.getItem('token');
+
+    useEffect(() => {
+        const fetchJobs = async () => {
+            // ... existing fetch implementation ...
+        };
+        const fetchStats = async () => {
+            try {
+                const stats = await authService.getTotalUsers();
+                setTotalUsers(stats.total_users || 0);
+            } catch(e) {
+                console.error("Failed to fetch total users", e);
+            }
+        };
+        fetchJobs();
+        fetchStats();
+    }, []);
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-navy font-sans transition-colors">
             {/* Navbar */}
@@ -13,16 +33,22 @@ const LandingPage = () => {
                     <div className="bg-primary p-2 rounded-lg shadow-lg shadow-primary/30">
                         <Terminal className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
-                    <span className="text-xl font-black text-navy dark:text-white tracking-tight">TechPath</span>
+                    <span className="text-xl font-black text-navy dark:text-white tracking-tight">JOB TRAIL SIMULATOR</span>
                 </div>
                 <div className="hidden lg:flex items-center space-x-8">
                     <a href="#about" className="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary font-bold text-sm uppercase tracking-widest transition-colors">About</a>
                     <a href="#roles" className="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary font-bold text-sm uppercase tracking-widest transition-colors">Roles</a>
                 </div>
                 <div className="flex items-center space-x-3 sm:space-x-4">
+                    {/* Hiding Dashboard button as per user request, but keeping code intact */}
+                    {false && isLoggedIn && (
+                        <Link to="/dashboard" className="px-4 py-2 sm:px-6 sm:py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-black text-xs sm:text-sm shadow-lg shadow-indigo-200 active:scale-95 uppercase tracking-widest mr-2">
+                            Dashboard
+                        </Link>
+                    )}
                     <Link to="/login" className="text-navy dark:text-slate-200 font-black text-sm uppercase tracking-widest hover:text-primary transition-colors pr-2">Login</Link>
                     <Link to="/signup" className="px-4 py-2 sm:px-6 sm:py-3 bg-primary text-white rounded-xl hover:bg-primary-hover transition-all font-black text-xs sm:text-sm shadow-lg shadow-primary/25 active:scale-95 uppercase tracking-widest">
-                        Join Now
+                        Signup
                     </Link>
                 </div>
             </nav>
@@ -38,7 +64,7 @@ const LandingPage = () => {
                         Experience Your <span className="text-primary italic">Future</span> Career Today.
                     </h1>
                     <p className="text-base sm:text-xl text-slate-500 dark:text-slate-400 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
-                        Stop guessing. Start doing. TechPath lets you test-drive real-world job roles through immersive simulations before you commit.
+                        Stop guessing. Start doing. JOB TRAIL SIMULATOR lets you test-drive real-world job roles through immersive simulations before you commit.
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6 pt-4">
                         <Link to="/signup" className="w-full sm:w-auto px-10 py-5 bg-primary text-white rounded-2xl hover:bg-primary-hover transition-all font-black text-lg shadow-2xl shadow-primary/30 active:scale-95 flex items-center justify-center gap-2">
@@ -52,7 +78,9 @@ const LandingPage = () => {
                                 </div>
                             ))}
                             <div className="ml-8 flex flex-col items-start">
-                                <span className="text-lg font-black text-navy dark:text-white leading-none">12k+</span>
+                                <span className="text-lg font-black text-navy dark:text-white leading-none">
+                                    {totalUsers >= 1000 ? (totalUsers / 1000).toFixed(1) + 'k+' : totalUsers + '+'}
+                                </span>
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Simulators</span>
                             </div>
                         </div>
@@ -106,14 +134,14 @@ const LandingPage = () => {
                         <h2 className="text-3xl sm:text-5xl font-black text-navy dark:text-white mb-4 tracking-tight">Available Simulations</h2>
                         <p className="text-slate-500 dark:text-slate-300 font-medium text-lg">Explore diverse roles across the modern tech spectrum.</p>
                     </div>
-                    <Link to="/jobs" className="px-6 py-3 bg-slate-900 dark:bg-primary text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl active:scale-95 flex items-center gap-2">
+                    <Link to="/signup" className="px-6 py-3 bg-slate-900 dark:bg-primary text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl active:scale-95 flex items-center gap-2">
                         View All <ArrowRight className="w-4 h-4" />
                     </Link>
                 </div>
 
-                <div className="max-w-7xl mx-auto px-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-6 px-4">
-                    {MOCK_JOBS.slice(0, 4).map((job) => (
-                        <div key={job.id} className="group border-2 border-slate-50 dark:border-slate-800 rounded-[2rem] p-6 sm:p-8 hover:border-primary dark:hover:border-primary transition-all cursor-pointer bg-slate-50/50 dark:bg-navy-light hover:bg-white dark:hover:bg-navy shadow-sm hover:shadow-2xl">
+                <div className="max-w-7xl mx-auto px-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {jobs.slice(0, 4).map((job) => (
+                        <Link key={job.id} to={isLoggedIn ? `/jobs/${job.id}` : '/login'} className="group border-2 border-slate-50 dark:border-slate-800 rounded-[2rem] p-6 sm:p-8 hover:border-primary dark:hover:border-primary transition-all cursor-pointer bg-slate-50/50 dark:bg-navy-light hover:bg-white dark:hover:bg-navy shadow-sm hover:shadow-2xl">
                             <div className="h-44 bg-navy dark:bg-navy-light rounded-2xl mb-8 overflow-hidden relative group-hover:scale-[1.02] transition-transform">
                                 <div className="absolute inset-0 bg-gradient-to-tr from-primary/30 to-transparent"></div>
                                 <div className="absolute inset-0 flex items-center justify-center text-white/10">
@@ -125,7 +153,7 @@ const LandingPage = () => {
                             <span className="text-primary text-xs font-black uppercase tracking-widest group-hover:translate-x-2 transition-transform inline-flex items-center gap-2">
                                 Start Simulation <ArrowRight className="w-4 h-4" />
                             </span>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             </section>
@@ -136,7 +164,7 @@ const LandingPage = () => {
                 <div className="max-w-4xl mx-auto px-4 text-center relative z-10">
                     <div className="text-primary/20 mb-8 text-8xl font-black italic select-none">&quot;</div>
                     <h2 className="text-2xl sm:text-4xl font-black text-navy dark:text-white leading-tight mb-12 italic tracking-tight">
-                        &quot;I wasn&apos;t sure if coding was for me. After simulating a week as a DevOps Dev on TechPath, I knew exactly what to study. I landed my first internship 3 months later!&quot;
+                        &quot;I wasn&apos;t sure if coding was for me. After simulating a week as a DevOps Dev on JOB TRAIL SIMULATOR, I knew exactly what to study. I landed my first internship 3 months later!&quot;
                     </h2>
                     <div className="flex flex-col items-center justify-center gap-4">
                         <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" alt="Sarah" className="w-16 h-16 rounded-full bg-white dark:bg-navy shadow-xl border-4 border-white dark:border-navy" />
@@ -171,7 +199,7 @@ const LandingPage = () => {
                             <div className="bg-primary p-1.5 rounded-lg">
                                 <Terminal className="w-4 h-4 text-white" />
                             </div>
-                            <span className="text-xl font-black text-navy dark:text-white italic tracking-tight">TechPath</span>
+                            <span className="text-xl font-black text-navy dark:text-white italic tracking-tight">JTS</span>
                         </div>
                         <p className="text-slate-500 dark:text-slate-300 text-sm font-medium leading-relaxed">Simulating the future of work. We help students bridge the gap between education and global industry employment.</p>
                     </div>
@@ -194,19 +222,15 @@ const LandingPage = () => {
                     <div className="flex flex-col gap-4">
                         <h4 className="font-black text-navy dark:text-white uppercase tracking-widest text-xs">Support</h4>
                         <ul className="space-y-3 text-sm text-slate-500 font-medium">
-                            <li><a href="#" className="hover:text-primary transition-colors">Help Center</a></li>
-                            <li><a href="#" className="hover:text-primary transition-colors">Privacy Policy</a></li>
-                            <li><a href="#" className="hover:text-primary transition-colors">Terms of Work</a></li>
+                            <li><Link to="/support" className="hover:text-primary transition-colors">Help Center</Link></li>
+                            <li><Link to="/about" className="hover:text-primary transition-colors">About Us</Link></li>
+                            <li><Link to="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
+                            <li><Link to="/terms" className="hover:text-primary transition-colors">Terms of Work</Link></li>
                         </ul>
                     </div>
                 </div>
                 <div className="max-w-7xl mx-auto px-4 mt-20 pt-10 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                    <p>&copy; 2026 TechPath Simulator. Built for the future of tech.</p>
-                    <div className="flex space-x-6">
-                        <a href="#" className="hover:text-primary transition-colors">Twitter</a>
-                        <a href="#" className="hover:text-primary transition-colors">LinkedIn</a>
-                        <a href="#" className="hover:text-primary transition-colors">GitHub</a>
-                    </div>
+                    <p>&copy; 2026 JOB TRAIL SIMULATOR. Built for the future of tech.</p>
                 </div>
             </footer>
         </div>

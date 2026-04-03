@@ -20,13 +20,114 @@ import {
     ChevronRight,
     Plus,
     Box,
-    Maximize2
+    Maximize2,
+    Loader2
 } from 'lucide-react';
+import TaskFeedback from './TaskFeedback';
 
-const DBSimulation = ({ currentTask, handleNext }) => {
+import { useNavigate, useParams } from 'react-router-dom';
+import { simulationService, jobService } from '../../services/api';
+
+const DBSimulation = () => {
+    const { jobId, level } = useParams();
+    const navigate = useNavigate();
+    const [currentTask, setCurrentTask] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [aiFeedback, setAiFeedback] = useState(null);
+    const [showFeedback, setShowFeedback] = useState(false);
+
+    const [goal, setGoal] = useState('');
+    const [logic, setLogic] = useState('');
     const [activeTab, setActiveTab] = useState('schema');
-    const [timeLeft, setTimeLeft] = useState(currentTask.time_limit || 3600);
-    const [sqlQuery, setSqlQuery] = useState('-- Schema Refactoring Task\nALTER TABLE orders\nADD COLUMN tracking_id VARCHAR(255),\nADD CONSTRAINT fk_tracking\nFOREIGN KEY (tracking_id) REFERENCES shipping(id);');
+    const [timeLeft, setTimeLeft] = useState(3600);
+    const [sqlQuery, setSqlQuery] = useState('');
+    const [consoleLogs, setConsoleLogs] = useState([
+        { type: 'info', message: 'Connecting to node_01... Done.' },
+        { type: 'info', message: 'Production instance ready for commands.' }
+    ]);
+
+    useEffect(() => {
+        const fetchTask = async () => {
+            try {
+                const tasks = await jobService.getTasks(jobId, level);
+                const task = tasks.find(t => t.number === 6) || tasks[0];
+                setCurrentTask(task);
+                setSqlQuery(task.initial_code || '');
+                setTimeLeft(task.time_limit || 3600);
+            } catch (error) {
+                console.error("Error fetching task:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchTask();
+    }, [jobId, level]);
+
+    const handleExecuteQuery = () => {
+        const query = sqlQuery.toUpperCase();
+        const logs = [];
+
+        if (query.includes('REFFERENCES')) {
+            logs.push({ type: 'error', message: '[CRITICAL_ERROR] Syntax error at or near "REFFERENCES". Did you mean "REFERENCES"?' });
+        } else if (query.includes('CREATE INDEX')) {
+            logs.push({ type: 'success', message: '[SUCCESS] Index created successfully. Estimated performance gain: 45%' });
+            logs.push({ type: 'info', message: 'Updated execution plan for table "orders".' });
+        } else if (query.trim() === '') {
+            logs.push({ type: 'warning', message: '[WARNING] Empty query submitted.' });
+        } else {
+            logs.push({ type: 'success', message: '[SUCCESS] Query executed successfully.' });
+            logs.push({ type: 'info', message: `${Math.floor(Math.random() * 200)} rows affected.` });
+        }
+
+        setConsoleLogs(prev => [...prev, ...logs]);
+    };
+
+    const handleNext = async (data) => {
+        try {
+            setIsSubmitting(true);
+            const query = sqlQuery.toUpperCase();
+
+            // Evaluation Logic
+            const hasTypoFix = !query.includes('REFFERENCES') && query.includes('REFERENCES');
+            const hasIndex = query.includes('CREATE INDEX');
+
+            let passed = true;
+            let score = 100;
+            let feedback = "Excellent work! You fixed the schema syntax and implemented indexing for performance.";
+
+            if (!hasTypoFix) {
+                passed = false;
+                score = 60;
+                feedback = "Simulation failed: The schema still contains a typo in the 'REFERENCES' keyword, preventing deployment.";
+            } else if (!hasIndex) {
+                passed = false;
+                score = 75;
+                feedback = "Good catch on the syntax bug, but you haven't implemented any indexing optimization to help with the high latency.";
+            }
+
+            const result = await simulationService.submitTask(currentTask.id, data.content);
+            setAiFeedback({ score, feedback });
+            setShowFeedback(true);
+        } catch (error) {
+            console.error("Error submitting task:", error);
+            // Fallback for demo
+            const query = sqlQuery.toUpperCase();
+            const hasTypoFix = !query.includes('REFFERENCES') && query.includes('REFERENCES');
+            const hasIndex = query.includes('CREATE INDEX');
+
+            if (!hasTypoFix) {
+                setAiFeedback({ score: 60, feedback: "Simulation failed: The schema still contains a typo in the 'REFERENCES' keyword." });
+            } else if (!hasIndex) {
+                setAiFeedback({ score: 75, feedback: "Syntax fixed, but no optimization (indexing) was found." });
+            } else {
+                setAiFeedback({ score: 100, feedback: "Perfect! You fixed the syntax and added optimizations." });
+            }
+            setShowFeedback(true);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     // Timer logic
     useEffect(() => {
@@ -42,6 +143,15 @@ const DBSimulation = ({ currentTask, handleNext }) => {
         const s = seconds % 60;
         return `${m.toString().padStart(2, '0')} : ${s.toString().padStart(2, '0')}`;
     };
+
+    if (isLoading) {
+        return (
+            <div className="h-screen flex flex-col items-center justify-center bg-[#020617] text-slate-300">
+                <Loader2 className="w-12 h-12 text-sky-500 animate-spin mb-4" />
+                <p className="text-sm font-black uppercase tracking-widest text-sky-400">Initializing Database Environment...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="h-screen flex flex-col bg-[#020617] text-slate-300 font-sans transition-colors overflow-hidden">
@@ -90,11 +200,16 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                             <span className="text-[9px] font-black uppercase tracking-widest">Secure Mode</span>
                         </div>
                         <button
-                            onClick={handleNext}
-                            className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-5 py-2 rounded-lg font-bold text-[11px] shadow-lg shadow-sky-500/20 transition-all active:scale-95 flex items-center gap-2"
+                            onClick={() => handleNext({ content: `SQL Query:\n${sqlQuery}\n\nDesign Goal:\n${goal}\n\nOptimization Logic:\n${logic}`, passed: true })}
+                            disabled={isSubmitting}
+                            className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-5 py-2 rounded-lg font-bold text-[11px] shadow-lg shadow-sky-500/20 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
                         >
-                            <Save className="w-3.5 h-3.5" />
-                            Deploy Changes
+                            {isSubmitting ? (
+                                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            ) : (
+                                <Save className="w-3.5 h-3.5" />
+                            )}
+                            <span>{isSubmitting ? 'Deploying...' : 'Deploy Changes'}</span>
                         </button>
                     </div>
                 </div>
@@ -221,7 +336,7 @@ const DBSimulation = ({ currentTask, handleNext }) => {
 
                                 <div className="absolute bottom-6 right-8 flex gap-3">
                                     <div className="bg-black/60 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 flex items-center gap-3 text-[10px] font-black uppercase tracking-widest shadow-2xl ring-1 ring-white/5">
-                                        <zap className="w-3.5 h-3.5 text-amber-500" />
+                                        <Zap className="w-3.5 h-3.5 text-amber-500" />
                                         <span className="text-slate-400">Auto-Fix Active</span>
                                     </div>
                                 </div>
@@ -242,6 +357,7 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                                         <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">query_workspace_v1.sql</span>
                                     </div>
                                     <button
+                                        onClick={handleExecuteQuery}
                                         className="flex items-center gap-2 px-5 py-2 bg-sky-500 text-white rounded-lg text-[11px] font-black shadow-lg shadow-sky-500/30 transition-all hover:scale-105 active:scale-95"
                                     >
                                         <Play className="w-3.5 h-3.5 fill-current" /> Execute Query
@@ -249,7 +365,7 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                                 </div>
                                 <div className="flex-grow flex p-6 font-mono text-sm">
                                     <div className="w-12 text-slate-700 select-none text-right pr-6 border-r border-white/5 leading-7">
-                                        {[...Array(12)].map((_, i) => <div key={i}>{i + 1}</div>)}
+                                        {[...Array(20)].map((_, i) => <div key={i}>{i + 1}</div>)}
                                     </div>
                                     <textarea
                                         value={sqlQuery}
@@ -259,20 +375,19 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                                 </div>
                             </div>
 
+                            {/* Log Section */}
                             <div className="h-64 bg-black/40 rounded-3xl border border-white/5 flex flex-col overflow-hidden shadow-xl">
                                 <div className="px-6 py-3 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
                                     <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[2px] flex items-center gap-2">
                                         <FileCode className="w-4 h-4" /> Console Output
                                     </h3>
-                                    <div className="flex items-center gap-4 text-[10px] text-slate-600 font-bold">
-                                        <span>Affected: 124 rows</span>
-                                        <span>Time: 0.004s</span>
-                                    </div>
                                 </div>
                                 <div className="p-6 overflow-auto custom-scrollbar font-mono text-[11px] space-y-2">
-                                    <p className="text-emerald-500">[SUCCESS] Query executed successfully.</p>
-                                    <p className="text-slate-500">Connecting to node_01... Done.</p>
-                                    <p className="text-slate-500 font-bold italic underline">Refactoring integrity check: 100% complete.</p>
+                                    {consoleLogs.map((log, idx) => (
+                                        <p key={idx} className={log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-emerald-500' : log.type === 'warning' ? 'text-amber-400' : 'text-slate-500'}>
+                                            {log.message}
+                                        </p>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -295,6 +410,8 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                                 <textarea
                                     className="w-full bg-black/40 rounded-2xl border border-white/5 p-4 text-xs text-slate-300 focus:outline-none focus:ring-1 ring-sky-500/50 resize-none min-h-[100px] transition-all"
                                     placeholder="What was the main purpose of this schema change?"
+                                    value={goal}
+                                    onChange={(e) => setGoal(e.target.value)}
                                 />
                             </div>
                             <div className="space-y-4">
@@ -302,6 +419,8 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                                 <textarea
                                     className="w-full bg-black/40 rounded-2xl border border-white/5 p-4 text-xs text-slate-300 focus:outline-none focus:ring-1 ring-sky-500/50 resize-none min-h-[100px] transition-all"
                                     placeholder="How did you ensure data integrity and performance?"
+                                    value={logic}
+                                    onChange={(e) => setLogic(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -325,6 +444,14 @@ const DBSimulation = ({ currentTask, handleNext }) => {
                     background: rgba(255, 255, 255, 0.1);
                 }
             `}</style>
+            {showFeedback && (
+                <TaskFeedback
+                    onNext={() => navigate(`/simulation/${jobId}/${level}/feedback`)}
+                    onRetry={() => setShowFeedback(false)}
+                    score={aiFeedback?.score}
+                    feedback={aiFeedback?.feedback}
+                />
+            )}
         </div>
     );
 };

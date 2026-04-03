@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend/jts.db:/app/jts.db
+    # Environment variables are loaded from backend/.env locally or passed here
+    env_file:
+      - ./backend/.env
+    environment:
+      # If .env varies, you can override here
+      - DATABASE_URL=sqlite:///./jts.db
+
+  frontend:
+    build: 
+      context: ./frontend
+      args:
+        # VITE_API_URL defines where the frontend looks for the backend in production mode.
+        - VITE_API_URL=http://localhost:8001
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+# Note: The database is mounted as a simple SQLite file volume so it persists across container restarts.

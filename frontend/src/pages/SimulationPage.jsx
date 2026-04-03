@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { MOCK_JOBS, MOCK_TASKS } from '../data/mockData';
-import { Clock, ChevronRight, CheckCircle, AlertCircle, Play, Save, Lightbulb, HelpCircle } from 'lucide-react';
+import { Clock, ChevronRight, CheckCircle, AlertCircle, Play, Save, Lightbulb, HelpCircle, Loader2 } from 'lucide-react';
+import { simulationService, jobService } from '../services/api';
 
 // Specialized Simulation Components
 import DevSimulation from '../components/simulation/DevSimulation';
@@ -19,29 +19,113 @@ const SimulationPage = () => {
     const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
     const [activeTab, setActiveTab] = useState('instructions'); // 'instructions' or 'workspace'
     const [isExecuting, setIsExecuting] = useState(false);
-    const [isExecuting, setIsExecuting] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null);
     const [showFeedback, setShowFeedback] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [aiFeedback, setAiFeedback] = useState(null);
+    const [tasks, setTasks] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [job, setJob] = useState(null);
 
-    // Find job from simId
-    const job = MOCK_JOBS.find(j => j.id === simId) || MOCK_JOBS[0];
-    const tasks = MOCK_TASKS[job.id] || MOCK_TASKS['job_dev'];
+    // Fetch tasks from backend
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setIsLoading(true);
+                const [jobData, tasksData] = await Promise.all([
+                    jobService.getJob(simId),
+                    jobService.getTasks(simId, level.charAt(0).toUpperCase() + level.slice(1).toLowerCase())
+                ]);
+                setJob(jobData);
+                setTasks(tasksData);
+
+                // Set initial code if available
+                if (tasksData.length > 0 && tasksData[currentTaskIndex].initial_code) {
+                    setCode(tasksData[currentTaskIndex].initial_code);
+                }
+            } catch (error) {
+                console.error("Error fetching tasks:", error);
+                setJob(null);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchData();
+    }, [simId, level]);
+
     const currentTask = tasks[currentTaskIndex];
 
-    const handleTaskCompletion = () => {
-        setShowFeedback(true);
+
+    const handleTaskSubmit = async (submissionData) => {
+        try {
+            setIsSubmitting(true);
+
+            // Determine content and status
+            let contentToSubmit = code || currentTask.initial_code || '';
+            let validationStatus = null; // null = unknown, true = passed, false = failed
+
+            if (typeof submissionData === 'string') {
+                // Legacy/Explanation Case
+                contentToSubmit = submissionData;
+            } else if (typeof submissionData === 'object' && submissionData !== null) {
+                // New Validation Object Case
+                if (submissionData.passed !== undefined) {
+                    validationStatus = submissionData.passed;
+                }
+                // If the object has 'content' (unlikely in current flow, but safe to check)
+                if (submissionData.content) contentToSubmit = submissionData.content;
+            }
+
+            // Prepend a status marker to the content for the backend to see
+            // Format: "/* STATUS:PASSED */\n...code..."
+            if (validationStatus !== null) {
+                const marker = validationStatus ? "/* STATUS:PASSED */" : "/* STATUS:FAILED */";
+                contentToSubmit = `${marker}\n${contentToSubmit}`;
+            }
+
+            const result = await simulationService.submitTask(currentTask.id, contentToSubmit);
+            setAiFeedback(result);
+            setShowFeedback(true);
+        } catch (error) {
+            console.error("Error submitting task:", error);
+            setShowFeedback(false);
+            alert("Failed to submit task. Please check your connection.");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleProceed = () => {
         setShowFeedback(false);
         if (currentTaskIndex < tasks.length - 1) {
-            setCurrentTaskIndex(prev => prev + 1);
-            setCode('');
-            setShowHint(false);
-            setSaveStatus(null);
-            if (window.innerWidth < 768) setActiveTab('instructions');
+            const nextTask = tasks[currentTaskIndex + 1];
+            const normalizedLevel = level.charAt(0).toUpperCase() + level.slice(1).toLowerCase();
+
+            // Navigate to specialized routes if applicable
+            if (nextTask.number === 2) {
+                navigate(`/simulation/${job.id}/${normalizedLevel}/explanation`);
+            } else if (nextTask.number === 3) {
+                navigate(`/simulation/${job.id}/${normalizedLevel}/sanitize`);
+            } else if (nextTask.number === 4 && job.id === 'job_dev') {
+                navigate(`/simulation/${job.id}/${normalizedLevel}/todo-feature`);
+            } else if (nextTask.number === 5 && job.id === 'job_dev') {
+                navigate(`/simulation/${job.id}/${normalizedLevel}/rest-api`);
+            } else if (nextTask.number === 6 && job.id === 'job_dev') {
+                navigate(`/simulation/${job.id}/${normalizedLevel}/db-simulation`);
+            } else if ((nextTask.id === 't7_sys_design' || nextTask.number === 7) && job.id === 'job_dev') {
+                navigate(`/simulation/${job.id}/${normalizedLevel}/system-design`);
+            } else {
+                setCurrentTaskIndex(prev => prev + 1);
+                const nextTask = tasks[currentTaskIndex + 1];
+                setCode(nextTask?.initial_code || '');
+                setShowHint(false);
+                setSaveStatus(null);
+                setAiFeedback(null);
+                if (window.innerWidth < 768) setActiveTab('instructions');
+            }
         } else {
-            navigate(`/simulation/${simId}/feedback`);
+            // Level completed - go to level-specific feedback
+            navigate(`/simulation/${simId}/${level}/feedback`);
         }
     };
 
@@ -61,8 +145,8 @@ const SimulationPage = () => {
         currentTask,
         tasks,
         currentTaskIndex,
-        currentTaskIndex,
-        handleNext: handleTaskCompletion,
+        handleNext: handleTaskSubmit,
+        isSubmitting,
         code,
         setCode,
         showHint,
@@ -73,6 +157,8 @@ const SimulationPage = () => {
 
     // Specialized simulation selection
     const renderSpecializedSim = () => {
+        if (!currentTask) return null;
+
         switch (job.id) {
             case 'job_dev': return <DevSimulation {...simulationProps} />;
             case 'job_uiux': return <UXSimulation {...simulationProps} />;
@@ -83,8 +169,7 @@ const SimulationPage = () => {
         }
     };
 
-    const specializedSim = renderSpecializedSim();
-    const specializedSim = renderSpecializedSim();
+    const specializedSim = job ? renderSpecializedSim() : null;
     if (specializedSim) {
         return (
             <>
@@ -94,6 +179,8 @@ const SimulationPage = () => {
                         onNext={handleProceed}
                         onRetry={() => setShowFeedback(false)}
                         isLastTask={currentTaskIndex === tasks.length - 1}
+                        score={aiFeedback?.score}
+                        feedback={aiFeedback?.feedback}
                     />
                 )}
             </>
@@ -106,24 +193,24 @@ const SimulationPage = () => {
             <div className="bg-white dark:bg-navy-light border-b border-gray-200 dark:border-slate-800 px-4 py-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm z-30">
                 <div className="flex items-center space-x-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
                     <div className="bg-indigo-100 dark:bg-primary/20 p-2 rounded-lg flex items-center gap-2 shrink-0">
-                        <span className="font-bold text-primary dark:text-primary-light text-sm sm:text-base whitespace-nowrap">{job.title}</span>
+                        <span className="font-bold text-primary dark:text-primary-light text-sm sm:text-base whitespace-nowrap">{job?.title || 'Loading Job...'}</span>
                         <span className="bg-white dark:bg-navy px-2 py-0.5 rounded text-[10px] uppercase font-black text-indigo-400 dark:text-indigo-300 border border-indigo-100 dark:border-slate-800 italic shrink-0">
-                            {level}
+                            {level || '...'}
                         </span>
                     </div>
                     <div className="flex items-center text-gray-500 dark:text-slate-400 text-xs sm:text-sm shrink-0">
-                        <span className="mr-2">Task {currentTaskIndex + 1} of {tasks.length}:</span>
-                        <span className="font-medium text-gray-900 dark:text-white truncate max-w-[150px] sm:max-w-[300px]">{currentTask.title}</span>
+                        <span className="mr-2">Task {(currentTaskIndex + 1)} of {tasks?.length || 0}:</span>
+                        <span className="font-medium text-gray-900 dark:text-white truncate max-w-[150px] sm:max-w-[300px]">{currentTask?.title || 'Loading task details...'}</span>
                     </div>
                 </div>
 
                 <div className="flex items-center justify-between w-full md:w-auto gap-4">
-                    <div className="flex items-center bg-gray-100 dark:bg-navy px-3 py-1.5 rounded-full text-red-600 dark:text-red-400 font-mono font-medium text-sm">
+                    <div className="flex items-center bg-gray-100 dark:bg-navy px-3 py-1.5 rounded-full text-indigo-600 dark:text-indigo-400 font-mono font-medium text-sm">
                         <Clock className="w-4 h-4 mr-2" />
-                        09:45
+                        {currentTask?.duration || 30} mins
                     </div>
                     <button
-                        onClick={handleTaskCompletion}
+                        onClick={() => handleTaskSubmit()}
                         className="btn-primary flex items-center text-sm px-4 py-1.5"
                     >
                         {currentTaskIndex === tasks.length - 1 ? 'Finish' : 'Next'}
@@ -137,6 +224,8 @@ const SimulationPage = () => {
                     onNext={handleProceed}
                     onRetry={() => setShowFeedback(false)}
                     isLastTask={currentTaskIndex === tasks.length - 1}
+                    score={aiFeedback?.score}
+                    feedback={aiFeedback?.feedback}
                 />
             )}
 
@@ -165,14 +254,27 @@ const SimulationPage = () => {
                         Instructions
                     </h2>
                     <div className="prose prose-sm prose-indigo text-gray-700 dark:text-slate-300">
-                        <p className="mb-4">{currentTask.description}</p>
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Instructions...</p>
+                            </div>
+                        ) : !currentTask ? (
+                            <div className="text-center py-10">
+                                <XCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
+                                <p className="text-sm text-slate-500 font-medium">Task data unavailable.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <p className="mb-4">{currentTask.description}</p>
+                                <div className="bg-blue-50 dark:bg-blue-500/10 border-l-4 border-blue-500 p-4 my-4 rounded">
+                                    <h4 className="text-blue-700 dark:text-blue-400 font-bold text-xs uppercase tracking-wide mb-1">Context</h4>
+                                    <p className="text-blue-800 dark:text-blue-200">{currentTask.context}</p>
+                                </div>
+                            </>
+                        )}
 
-                        <div className="bg-blue-50 dark:bg-blue-500/10 border-l-4 border-blue-500 p-4 my-4 rounded">
-                            <h4 className="text-blue-700 dark:text-blue-400 font-bold text-xs uppercase tracking-wide mb-1">Context</h4>
-                            <p className="text-blue-800 dark:text-blue-200">{currentTask.context}</p>
-                        </div>
-
-                        {currentTask.hint && (
+                        {currentTask?.hint && (
                             <div className="mt-6">
                                 <button
                                     onClick={() => setShowHint(!showHint)}
@@ -195,7 +297,7 @@ const SimulationPage = () => {
                             </div>
                         )}
 
-                        {currentTask.type === 'multiple_choice' && (
+                        {currentTask?.type === 'multiple_choice' && (
                             <div className="space-y-3 mt-6">
                                 {currentTask.options.map((opt, i) => (
                                     <label key={i} className="flex items-center p-3 border border-gray-200 dark:border-slate-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-navy transition-colors">
@@ -247,7 +349,7 @@ const SimulationPage = () => {
 
                     {/* Editor Area */}
                     <div className="flex-grow relative">
-                        {currentTask.type === 'multiple_choice' ? (
+                        {currentTask?.type === 'multiple_choice' ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 p-6 text-center">
                                 <HelpCircle className="w-12 h-12 mb-4 opacity-20" />
                                 <p className="max-w-xs">This task is multiple choice. Select an option from the instructions panel on the left.</p>
@@ -261,7 +363,7 @@ const SimulationPage = () => {
                         ) : (
                             <textarea
                                 className="w-full h-full bg-gray-900 text-gray-100 p-4 font-mono text-sm resize-none focus:outline-none"
-                                value={code || currentTask.code_snippet || ''}
+                                value={code || currentTask?.code_snippet || ''}
                                 onChange={(e) => setCode(e.target.value)}
                                 spellCheck="false"
                                 placeholder="// Type your solution here..."
